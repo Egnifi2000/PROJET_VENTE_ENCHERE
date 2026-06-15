@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -17,7 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { syncExpiredAuctions } from "@/lib/auction";
+import { scheduleExpiredAuctionsSync } from "@/lib/auction";
 
 export default function AdminAuctionDetail() {
   const { id } = useParams<{ id: string }>();
@@ -33,7 +33,7 @@ export default function AdminAuctionDetail() {
     queryFn: async () => {
       if (!id) throw new Error("Auction ID manquant");
 
-      await syncExpiredAuctions();
+      scheduleExpiredAuctionsSync();
 
       const { data, error } = await supabase
         .from("auctions")
@@ -378,3 +378,5 @@ export default function AdminAuctionDetail() {
     </div>
   );
 }
+
+

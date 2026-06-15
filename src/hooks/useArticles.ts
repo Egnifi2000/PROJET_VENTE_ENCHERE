@@ -1,12 +1,12 @@
-import { useQuery } from "@tanstack/react-query";
+﻿import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { syncExpiredAuctions } from "@/lib/auction";
+import { scheduleExpiredAuctionsSync } from "@/lib/auction";
 
 export function useArticles(filters?: { category?: string; search?: string }) {
   return useQuery({
     queryKey: ["articles", filters],
     queryFn: async () => {
-      await syncExpiredAuctions();
+      scheduleExpiredAuctionsSync();
 
       let query = supabase
         .from("articles")
@@ -32,7 +32,7 @@ export function useArticle(id: string) {
   return useQuery({
     queryKey: ["article", id],
     queryFn: async () => {
-      await syncExpiredAuctions();
+      scheduleExpiredAuctionsSync();
 
       const { data, error } = await supabase
         .from("articles")
@@ -50,7 +50,7 @@ export function useArticleBids(articleId: string) {
   return useQuery({
     queryKey: ["article-bids", articleId],
     queryFn: async () => {
-      await syncExpiredAuctions();
+      scheduleExpiredAuctionsSync();
 
       // First get auction for this article
       const { data: auction } = await supabase
@@ -80,7 +80,7 @@ export function useMyBids(userId?: string) {
     queryFn: async () => {
       if (!userId) return [];
 
-      await syncExpiredAuctions();
+      scheduleExpiredAuctionsSync();
 
       const { data, error } = await supabase
         .from("bids")
@@ -100,7 +100,7 @@ export function useUserNotifications(userId?: string) {
     queryFn: async () => {
       if (!userId) return [];
 
-      await syncExpiredAuctions();
+      scheduleExpiredAuctionsSync();
 
       const { data, error } = await supabase
         .from("user_notifications")
@@ -115,3 +115,5 @@ export function useUserNotifications(userId?: string) {
     enabled: !!userId,
   });
 }
+
+

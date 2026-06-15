@@ -1,4 +1,4 @@
-import { Suspense, lazy } from "react";
+﻿import { Suspense, lazy } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Loader2 } from "lucide-react";
@@ -21,7 +21,16 @@ const AdminAuctions = lazy(() => import("./pages/admin/AdminAuctions"));
 const AdminAuctionDetail = lazy(() => import("./pages/admin/AdminAuctionDetail"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 60_000,
+      gcTime: 5 * 60_000,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+    },
+  },
+});
 
 function PageLoader() {
   return (
@@ -61,3 +70,4 @@ const App = () => (
 );
 
 export default App;
+

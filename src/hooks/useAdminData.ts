@@ -1,12 +1,12 @@
-import { useQuery } from "@tanstack/react-query";
+﻿import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { syncExpiredAuctions } from "@/lib/auction";
+import { scheduleExpiredAuctionsSync } from "@/lib/auction";
 
 export function useAdminArticles() {
   return useQuery({
     queryKey: ["admin-articles"],
     queryFn: async () => {
-      await syncExpiredAuctions();
+      scheduleExpiredAuctionsSync();
 
       const { data, error } = await supabase
         .from("articles")
@@ -50,7 +50,7 @@ export function useAdminAuctions() {
   return useQuery({
     queryKey: ["admin-auctions"],
     queryFn: async () => {
-      await syncExpiredAuctions();
+      scheduleExpiredAuctionsSync();
 
       const { data, error } = await supabase
         .from("auctions")
@@ -77,3 +77,5 @@ export function useAdminAuctions() {
     },
   });
 }
+
+

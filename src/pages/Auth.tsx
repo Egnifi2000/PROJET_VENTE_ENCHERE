@@ -39,6 +39,20 @@ function buildLegacyWorkerEmail(matricule: string) {
   return `matricule-${safeMatricule}@sicma.com`;
 }
 
+function formatAuthError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+
+  if (message.toLowerCase().includes("invalid login credentials")) {
+    return "Identifiants invalides. Verifiez votre matricule ou votre mot de passe.";
+  }
+
+  if (message.toLowerCase().includes("email not confirmed")) {
+    return "Votre compte existe mais votre email n'est pas encore confirme.";
+  }
+
+  return message || "Une erreur est survenue.";
+}
+
 export default function Auth() {
   const [isLogin, setIsLogin] = useState(true);
   const [identifier, setIdentifier] = useState("");
@@ -47,6 +61,23 @@ export default function Auth() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  const repairProfileAfterSignup = async (userId: string, userEmail: string, fullName: string, matricule: string) => {
+    const { error } = await supabase
+      .from("profiles")
+      .upsert({
+        user_id: userId,
+        email: userEmail,
+        name: fullName,
+        matricule,
+      }, {
+        onConflict: "user_id",
+      });
+
+    if (error) {
+      console.error("Erreur de reparation du profil apres inscription:", error);
+    }
+  };
 
   const signInWithPossibleWorkerEmails = async (normalizedMatricule: string, rawPassword: string) => {
     const candidateEmails = [
@@ -143,13 +174,22 @@ export default function Auth() {
           throw new Error("Ce matricule est deja utilise. Veuillez vous connecter.");
         }
 
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email: generatedEmail,
           password,
           options: { data: { name: name.trim(), matricule: normalizedMatricule } },
         });
 
         if (error) throw error;
+
+        if (data.user) {
+          await repairProfileAfterSignup(
+            data.user.id,
+            generatedEmail,
+            name.trim(),
+            normalizedMatricule,
+          );
+        }
 
         toast({
           title: "Compte cree avec succes",
@@ -158,7 +198,7 @@ export default function Auth() {
         navigate("/");
       }
     } catch (error: any) {
-      toast({ title: "Erreur", description: error.message, variant: "destructive" });
+      toast({ title: "Erreur", description: formatAuthError(error), variant: "destructive" });
     } finally {
       setLoading(false);
     }

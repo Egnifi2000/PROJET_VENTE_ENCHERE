@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+﻿import { useQuery } from "@tanstack/react-query";
 import { Fragment, useEffect, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
@@ -20,7 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { syncExpiredAuctions } from "@/lib/auction";
+import { scheduleExpiredAuctionsSync } from "@/lib/auction";
 
 const PAGE_SIZE = 10;
 
@@ -32,7 +32,7 @@ export default function TopBidsTable() {
   const { data, isLoading } = useQuery({
     queryKey: ["top-bids"],
     queryFn: async () => {
-      await syncExpiredAuctions();
+      scheduleExpiredAuctionsSync();
 
       const { data, error } = await supabase
         .from("bids")
@@ -256,3 +256,5 @@ export default function TopBidsTable() {
     </div>
   );
 }
+
+

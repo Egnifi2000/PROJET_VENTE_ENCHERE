@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+﻿import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -70,7 +70,7 @@ export default function ArticleDetail() {
     setSubmitting(true);
 
     try {
-      await syncExpiredAuctions();
+      await syncExpiredAuctions({ force: true });
 
       if (isClosed) {
         toast({
@@ -346,3 +346,5 @@ export default function ArticleDetail() {
     </div>
   );
 }
+
+

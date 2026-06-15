@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useState, type ChangeEvent } from "react";
+﻿import { Suspense, lazy, useEffect, useState, type ChangeEvent } from "react";
 import { Loader2, Package, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -89,6 +89,18 @@ function formatDateTimeLocal(date: string | null) {
   const localDate = new Date(parsedDate.getTime() - offset * 60 * 1000);
 
   return localDate.toISOString().slice(0, 16);
+}
+
+function parseAmountInput(value: string) {
+  const digitsOnly = value.replace(/\D/g, "");
+
+  return digitsOnly ? Number.parseInt(digitsOnly, 10) : Number.NaN;
+}
+
+function formatAmountInput(value: string | number | null | undefined) {
+  if (value === null || value === undefined) return "";
+
+  return String(value).replace(/\D/g, "").replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 }
 
 function validateAuctionWindow(dateApparition: string, dateFinEnchere: string) {
@@ -309,11 +321,12 @@ export default function AdminArticles() {
 
       const publicationDate = new Date(form.date_apparition).toISOString();
       const auctionEndDate = new Date(form.date_fin_enchere).toISOString();
+      const startingPrice = parseAmountInput(form.starting_price);
       const payload = {
         title: form.title,
         description: form.description,
         category: form.category,
-        starting_price: parseFloat(form.starting_price),
+        starting_price: startingPrice,
         reference_article: form.reference_article,
         date_apparition: publicationDate,
         date_fin_enchere: auctionEndDate,
@@ -400,7 +413,7 @@ export default function AdminArticles() {
       title: article.title ?? "",
       description: article.description ?? "",
       category: article.category ?? "vehicule",
-      starting_price: String(article.starting_price ?? ""),
+      starting_price: formatAmountInput(article.starting_price),
       reference_article: article.reference_article ?? "",
       date_apparition: formatDateTimeLocal(article.date_apparition),
       date_fin_enchere: formatDateTimeLocal(article.date_fin_enchere),
@@ -697,3 +710,4 @@ export default function AdminArticles() {
     </div>
   );
 }
+

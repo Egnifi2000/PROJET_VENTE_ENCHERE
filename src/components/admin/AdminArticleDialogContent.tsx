@@ -1,4 +1,4 @@
-import type { ChangeEvent } from "react";
+﻿import type { ChangeEvent } from "react";
 import { ImagePlus, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -43,6 +43,12 @@ function toTitleCase(value: string) {
     const [first = "", ...rest] = word;
     return `${first.toLocaleUpperCase("fr-FR")}${rest.join("").toLocaleLowerCase("fr-FR")}`;
   });
+}
+
+function formatAmountInput(value: string) {
+  const digitsOnly = value.replace(/\D/g, "");
+
+  return digitsOnly.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 }
 
 export default function AdminArticleDialogContent({
@@ -161,11 +167,11 @@ export default function AdminArticleDialogContent({
                 <div>
                   <Label>Prix de depart (fcfa)</Label>
                   <Input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
                     value={form.starting_price}
-                    onChange={(e) => onSetForm({ ...form, starting_price: e.target.value })}
+                    onChange={(e) => onSetForm({ ...form, starting_price: formatAmountInput(e.target.value) })}
                     placeholder="0"
-                    min="0"
                   />
                 </div>
 
@@ -276,3 +282,4 @@ export default function AdminArticleDialogContent({
     </DialogContent>
   );
 }
+
