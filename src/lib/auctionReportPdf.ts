@@ -1,3 +1,5 @@
+import { AUCTION_STATUS_LABELS } from "@/lib/auction";
+
 type LoadedImage = {
   dataUrl: string;
   format: "PNG" | "JPEG" | "WEBP";
@@ -77,33 +79,61 @@ function truncateText(value: string, maxLength: number) {
 async function loadImageAsDataUrl(url: string): Promise<LoadedImage | null> {
   try {
     const response = await fetch(url);
-
     if (!response.ok) {
       return null;
     }
 
     const blob = await response.blob();
-    const dataUrl = await new Promise<string>((resolve, reject) => {
+    const mimeType = blob.type.toLowerCase();
+    const rawDataUrl = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onloadend = () => resolve(String(reader.result));
       reader.onerror = () => reject(reader.error);
       reader.readAsDataURL(blob);
     });
 
-    const mimeType = blob.type.toLowerCase();
-    const format = mimeType.includes("png")
-      ? "PNG"
-      : mimeType.includes("webp")
-        ? "WEBP"
-        : "JPEG";
+    const supportsNativePng = mimeType.includes("png");
+    const supportsNativeJpeg = mimeType.includes("jpeg") || mimeType.includes("jpg");
+    const needsConversion = mimeType.includes("webp") || mimeType.includes("svg");
 
-    return { dataUrl, format };
+    if (!supportsNativePng && !supportsNativeJpeg && !needsConversion) {
+      return null;
+    }
+
+    if (!needsConversion) {
+      return {
+        dataUrl: rawDataUrl,
+        format: supportsNativePng ? "PNG" : "JPEG",
+      };
+    }
+
+    try {
+      const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = (event) => reject(event);
+        img.src = rawDataUrl;
+      });
+
+      const canvas = document.createElement("canvas");
+      canvas.width = image.naturalWidth || image.width || 1;
+      canvas.height = image.naturalHeight || image.height || 1;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        return null;
+      }
+      ctx.drawImage(image, 0, 0);
+      const convertedDataUrl = canvas.toDataURL("image/jpeg", 0.9);
+      return { dataUrl: convertedDataUrl, format: "JPEG" };
+    } catch {
+      return null;
+    }
   } catch {
     return null;
   }
 }
 
-export async function generateAuctionReportPdf(auction: any) {
+export async function generateAuctionReportPdf(auction: any, selectedBidId?: string) {
   const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
     import("jspdf"),
     import("jspdf-autotable"),
@@ -111,7 +141,9 @@ export async function generateAuctionReportPdf(auction: any) {
 
   const article = auction?.articles;
   const bids = [...(auction?.bids || [])].sort((a: any, b: any) => b.amount - a.amount);
-  const winner = bids[0];
+  const winner = selectedBidId
+    ? bids.find((bid: any) => bid.id === selectedBidId)
+    : bids[0];
 
   if (!article) {
     throw new Error("Article introuvable pour cette enchere.");
@@ -148,7 +180,7 @@ export async function generateAuctionReportPdf(auction: any) {
   const message = toPdfText(buildWinnerMessage(winnerName, article.title || "Article", bestAmount));
   doc.setDrawColor(222, 226, 230);
   doc.setLineWidth(0.4);
-  doc.roundedRect(9, 8, pageWidth - 18, pageHeight - 16, 2, 2);
+  doc.roundedRect(9, 8, pageWidth - 18, pageHeight - 16, 2, 2, "S");
 
   if (logoImage) {
     doc.addImage(logoImage.dataUrl, logoImage.format, contentLeft, 12, 24, 11);
@@ -306,3 +338,302 @@ export async function generateAuctionReportPdf(auction: any) {
   const fileName = `rapport-enchere-${sanitizeFileName(String(reportReference)) || "reference"}.pdf`;
   doc.save(fileName);
 }
+
+export async function generateAuctionsDateReportPdf(auctions: any[], reportDate: string) {
+  const [{ default: jsPDF }] = await Promise.all([import("jspdf")]);
+  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 11;
+  const contentWidth = pageWidth - margin * 2;
+  const contentLeft = margin;
+  const contentRight = contentLeft + contentWidth;
+
+  const reportLabel = formatDateOnly(reportDate);
+  const logoImage = await loadImageAsDataUrl(`${window.location.origin}/logo.png`);
+
+  // Outer page border
+  doc.setDrawColor(222, 226, 230);
+  doc.setLineWidth(0.4);
+  doc.roundedRect(8, 8, pageWidth - 16, pageHeight - 16, 3, 3, "S");
+
+  // Header
+  if (logoImage) {
+    doc.addImage(logoImage.dataUrl, logoImage.format, contentLeft, 12, 28, 10);
+  }
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(16);
+  doc.setTextColor(34, 40, 49);
+  doc.text("RAPPORT JOURNALIER DES ENCHERES", pageWidth / 2, 18, { align: "center" });
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.5);
+  doc.setTextColor(102, 108, 125);
+  doc.text(
+    "Document consolidé des enchères terminées - Top 3 offres par article",
+    pageWidth / 2,
+    23,
+    { align: "center" },
+  );
+
+  doc.setFillColor(255, 91, 10);
+  doc.rect(contentLeft, 25, contentWidth, 2, "F");
+
+  // Info cards
+  const cardY = 29;
+  const cardH = 20;
+  const cardW = (contentWidth - 10) / 2;
+  doc.setDrawColor(217, 221, 225);
+  doc.setFillColor(249, 250, 251);
+  doc.roundedRect(contentLeft, cardY, cardW, cardH, 3, 3, "FD");
+  doc.roundedRect(contentLeft + cardW + 10, cardY, cardW, cardH, 3, 3, "FD");
+
+  doc.setFillColor(255, 91, 10);
+  doc.roundedRect(contentLeft + 4, cardY + 2, 18, 2, 1, 1, "F");
+  doc.roundedRect(contentLeft + cardW + 14, cardY + 2, 18, 2, 1, 1, "F");
+
+  doc.setFontSize(7.5);
+  doc.setTextColor(102, 108, 125);
+  doc.text("DATE DU RAPPORT", contentLeft + 4, cardY + 8);
+  doc.text("TOTAL ENCHERES", contentLeft + cardW + 14, cardY + 8);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.setTextColor(34, 40, 49);
+  doc.text(reportLabel, contentLeft + 4, cardY + 15);
+  doc.text(String(auctions.length), contentLeft + cardW + 14, cardY + 15);
+
+  // Table header
+  const tableTop = cardY + cardH + 10;
+  const rowHeight = 13;
+  const blockHeight = rowHeight * 3;
+  const rowGap = 3;
+
+  const colWidths = {
+    article: 36,
+    image: 28,
+    reference: 28,
+    price: 28,
+    offer: 33,
+    date: 24,
+    winner: 50,
+    matricule: 20,
+  };
+
+  const colX = {
+    article: contentLeft,
+    image: contentLeft + colWidths.article,
+    reference: contentLeft + colWidths.article + colWidths.image,
+    price: contentLeft + colWidths.article + colWidths.image + colWidths.reference,
+    offer:
+      contentLeft + colWidths.article + colWidths.image + colWidths.reference + colWidths.price,
+    date:
+      contentLeft + colWidths.article + colWidths.image + colWidths.reference + colWidths.price +
+      colWidths.offer,
+    winner:
+      contentLeft + colWidths.article + colWidths.image + colWidths.reference + colWidths.price +
+      colWidths.offer + colWidths.date,
+    matricule:
+      contentLeft + colWidths.article + colWidths.image + colWidths.reference + colWidths.price +
+      colWidths.offer + colWidths.date + colWidths.winner,
+  };
+
+  // Header row background
+  doc.setFillColor(255, 91, 10);
+  doc.setDrawColor(255, 91, 10);
+  doc.rect(contentLeft, tableTop, contentWidth, rowHeight, "F");
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7.5);
+  doc.setTextColor(255, 255, 255);
+  doc.text("Article", colX.article + colWidths.article / 2, tableTop + 8, {
+    align: "center",
+  });
+  doc.text("Image", colX.image + colWidths.image / 2, tableTop + 8, { align: "center" });
+  doc.text("Référence", colX.reference + colWidths.reference / 2, tableTop + 8, {
+    align: "center",
+  });
+  doc.text("Prix Article", colX.price + colWidths.price / 2, tableTop + 8, {
+    align: "center",
+  });
+  doc.text("Offre proposée", colX.offer + colWidths.offer / 2, tableTop + 8, {
+    align: "center",
+  });
+  doc.text("Date d'enchère", colX.date + colWidths.date / 2, tableTop + 8, {
+    align: "center",
+  });
+  doc.text("Nom du gagnant", colX.winner + colWidths.winner / 2, tableTop + 8, {
+    align: "center",
+  });
+  doc.text("Matricule", colX.matricule + colWidths.matricule / 2, tableTop + 8, {
+    align: "center",
+  });
+
+  doc.setDrawColor(217, 221, 225);
+  doc.setLineWidth(0.2);
+  doc.line(contentLeft, tableTop + rowHeight, contentRight, tableTop + rowHeight);
+  for (const key of ["image", "reference", "price", "offer", "date", "winner", "matricule"] as const) {
+    const x = colX[key];
+    doc.line(x, tableTop, x, tableTop + rowHeight);
+  }
+  doc.line(contentRight, tableTop, contentRight, tableTop + rowHeight);
+
+  let cursorY = tableTop + rowHeight;
+
+  for (const auction of auctions) {
+    const article = auction.articles || {};
+    const bids = [...(auction.bids || [])].sort((a: any, b: any) => b.amount - a.amount);
+    const topBids = bids.slice(0, 3);
+    const articleImageUrl = article.article_images?.[0]?.image_url;
+    const articleImage = articleImageUrl ? await loadImageAsDataUrl(articleImageUrl) : null;
+
+    if (cursorY + blockHeight + margin > pageHeight - 12) {
+      doc.addPage();
+      cursorY = 12;
+
+      // Repeat header on second page if needed
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(12);
+      doc.setTextColor(34, 40, 49);
+      doc.text("RAPPORT JOURNALIER DES ENCHERES", pageWidth / 2, cursorY + 6, { align: "center" });
+      cursorY += 12;
+    }
+
+    const blockX = contentLeft;
+    const blockY = cursorY;
+    doc.setDrawColor(217, 221, 225);
+    doc.setFillColor(255, 255, 255);
+    doc.roundedRect(blockX, blockY, contentWidth, blockHeight, 3, 3, "FD");
+
+    // Draw horizontal separators for each offer row
+    doc.setDrawColor(217, 221, 225);
+    doc.setLineWidth(0.2);
+    doc.line(blockX, blockY + rowHeight, contentRight, blockY + rowHeight);
+    doc.line(blockX, blockY + rowHeight * 2, contentRight, blockY + rowHeight * 2);
+
+    // Vertical separators
+    doc.line(colX.image, blockY, colX.image, blockY + blockHeight);
+    doc.line(colX.reference, blockY, colX.reference, blockY + blockHeight);
+    doc.line(colX.price, blockY, colX.price, blockY + blockHeight);
+    doc.line(colX.offer, blockY, colX.offer, blockY + blockHeight);
+    doc.line(colX.date, blockY, colX.date, blockY + blockHeight);
+    doc.line(colX.winner, blockY, colX.winner, blockY + blockHeight);
+    doc.line(colX.matricule, blockY, colX.matricule, blockY + blockHeight);
+    doc.line(contentRight, blockY, contentRight, blockY + blockHeight);
+
+    // Article cell
+    const articleCenterX = colX.article + colWidths.article / 2;
+    const articleCenterY = blockY + blockHeight / 2;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(34, 40, 49);
+    const articleLines = doc.splitTextToSize(truncateText(article.title || "-", 80), colWidths.article - 6);
+    const articleTextHeight = articleLines.length * 4.2;
+    const articleTextY = articleCenterY - articleTextHeight / 2 + 2;
+    doc.text(articleLines, articleCenterX, articleTextY, { align: "center" });
+
+    // Image cell
+    if (articleImage) {
+      const imageX = colX.image + 2;
+      const imageY = blockY + 2;
+      const imageW = colWidths.image - 4;
+      const imageH = blockHeight - 4;
+      doc.addImage(articleImage.dataUrl, articleImage.format, imageX, imageY, imageW, imageH);
+    } else {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7.5);
+      doc.setTextColor(102, 108, 125);
+      doc.text("Aucune image", colX.image + colWidths.image / 2, blockY + blockHeight / 2, {
+        align: "center",
+      });
+    }
+
+    // Reference cell
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7.5);
+    doc.setTextColor(102, 108, 125);
+    doc.text(
+      toPdfText(article.reference_article?.trim() || article.id || "SANS-REF"),
+      colX.reference + colWidths.reference / 2,
+      articleCenterY - 3,
+      { align: "center" },
+    );
+
+    // Price cell
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(34, 40, 49);
+    doc.text(
+      toPdfText(formatCurrency(article.starting_price)),
+      colX.price + colWidths.price / 2,
+      articleCenterY - 3,
+      { align: "center" },
+    );
+
+    // Offers rows
+    for (let index = 0; index < 3; index++) {
+      const bid = topBids[index];
+      const rowY = blockY + rowHeight * index;
+      const rowMiddleY = rowY + rowHeight / 2 + 1;
+
+      // Rank badge
+      const badgeX = colX.offer + 2;
+      const badgeY = rowY + 2;
+      const badgeSize = 9;
+      if (index === 0) doc.setFillColor(255, 195, 0);
+      else if (index === 1) doc.setFillColor(192, 192, 192);
+      else doc.setFillColor(237, 159, 61);
+      doc.roundedRect(badgeX, badgeY, badgeSize, badgeSize, 2, 2, "F");
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7);
+      doc.setTextColor(255, 255, 255);
+      doc.text(String(index + 1), badgeX + badgeSize / 2, badgeY + badgeSize - 2, {
+        align: "center",
+      });
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7.8);
+      doc.setTextColor(34, 40, 49);
+      const amountX = badgeX + badgeSize + 3;
+      doc.text(
+        bid ? formatCurrency(bid.amount) : "-",
+        amountX,
+        rowMiddleY,
+        { align: "left" },
+      );
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7.2);
+      doc.setTextColor(102, 108, 125);
+      doc.text(
+        bid ? toPdfText(formatDateOnly(auction.end_date)) : "-",
+        colX.date + colWidths.date / 2,
+        rowMiddleY,
+        { align: "center" },
+      );
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7.5);
+      doc.setTextColor(34, 40, 49);
+      const winnerName = bid ? truncateText(bid.profiles?.name || bid.profiles?.email || "-", 18) : "-";
+      doc.text(winnerName, colX.winner + 2, rowMiddleY, { align: "left" });
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7.5);
+      doc.setTextColor(102, 108, 125);
+      doc.text(
+        bid ? toPdfText(bid.profiles?.matricule || "-") : "-",
+        colX.matricule + colWidths.matricule / 2,
+        rowMiddleY,
+        { align: "center" },
+      );
+    }
+
+    cursorY += blockHeight + rowGap;
+  }
+
+  const fileName = `rapport-encheres-${sanitizeFileName(reportDate)}.pdf`;
+  doc.save(fileName);
+}
+

@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Download, Eye, Gavel, Loader2, Search } from "lucide-react";
 
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useAdminAuctions } from "@/hooks/useAdminData";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,6 +29,12 @@ export default function AdminAuctions() {
   const [search, setSearch] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [downloadingAuctionId, setDownloadingAuctionId] = useState<string | null>(null);
+  const [winnerDialogOpen, setWinnerDialogOpen] = useState(false);
+  const [selectedAuction, setSelectedAuction] = useState<any | null>(null);
+  const [selectedBidId, setSelectedBidId] = useState<string | null>(null);
+  const [downloadingSelectedWinnerId, setDownloadingSelectedWinnerId] = useState<string | null>(null);
+  const [reportDate, setReportDate] = useState<string>("");
+  const [dateReportLoading, setDateReportLoading] = useState(false);
 
   const handleGeneratePdf = async (auction: any) => {
     const hasWinner = Boolean(auction.bids?.length);
@@ -57,6 +65,83 @@ export default function AdminAuctions() {
       });
     } finally {
       setDownloadingAuctionId(null);
+    }
+  };
+
+  const openWinnerSelectionDialog = (auction: any) => {
+    const sortedBids = [...(auction.bids || [])].sort((a: any, b: any) => b.amount - a.amount);
+    setSelectedAuction(auction);
+    setSelectedBidId(sortedBids[0]?.id ?? null);
+    setWinnerDialogOpen(true);
+  };
+
+  const handleGenerateDateReportPdf = async () => {
+    if (!reportDate) {
+      toast({
+        title: "Date requise",
+        description: "Veuillez choisir une date avant de generer le rapport.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const matchedAuctions = (auctions ?? []).filter((auction) => {
+      const endDate = auction.end_date ? new Date(auction.end_date) : null;
+      if (!endDate) return false;
+      const normalizedAuctionDate = endDate.toISOString().slice(0, 10);
+      return normalizedAuctionDate === reportDate;
+    });
+
+    if (!matchedAuctions.length) {
+      toast({
+        title: "Aucune enchere",
+        description: "Aucune enchere trouvee pour cette date.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setDateReportLoading(true);
+
+    try {
+      const { generateAuctionsDateReportPdf } = await import("@/lib/auctionReportPdf");
+      await generateAuctionsDateReportPdf(matchedAuctions, reportDate);
+      toast({
+        title: "PDF genere",
+        description: "Le rapport journalier a ete telecharge.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Erreur",
+        description: error.message || "Impossible de generer le rapport PDF.",
+        variant: "destructive",
+      });
+    } finally {
+      setDateReportLoading(false);
+    }
+  };
+
+  const handleGenerateSelectedWinnerPdf = async () => {
+    if (!selectedAuction || !selectedBidId) return;
+
+    setDownloadingSelectedWinnerId(selectedAuction.id);
+
+    try {
+      const { generateAuctionReportPdf } = await import("@/lib/auctionReportPdf");
+      await generateAuctionReportPdf(selectedAuction, selectedBidId);
+      toast({
+        title: "PDF genere",
+        description: "Le rapport d'enchere pour le candidat choisi a ete telecharge.",
+      });
+      setWinnerDialogOpen(false);
+    } catch (error: any) {
+      toast({
+        title: "Erreur",
+        description: error.message || "Impossible de generer le rapport PDF.",
+        variant: "destructive",
+      });
+    } finally {
+      setDownloadingSelectedWinnerId(null);
     }
   };
 
@@ -112,6 +197,29 @@ export default function AdminAuctions() {
         </CardHeader>
 
         <CardContent className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-[1fr_auto] lg:grid-cols-[1fr_auto_auto]">
+            <div>
+              <p className="text-sm font-medium text-muted-foreground">Rapport journalier</p>
+              <p className="text-sm">Selectionnez une date de fin d'enchere pour generer le rapport global.</p>
+            </div>
+
+            <div className="flex gap-2">
+              <Input
+                type="date"
+                value={reportDate}
+                onChange={(event) => setReportDate(event.target.value)}
+                className="max-w-[220px]"
+              />
+              <Button
+                onClick={handleGenerateDateReportPdf}
+                disabled={dateReportLoading}
+              >
+                {dateReportLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Generer rapport
+              </Button>
+            </div>
+          </div>
+
           {isLoading ? (
             <div className="flex justify-center py-10">
               <Loader2 className="h-6 w-6 animate-spin text-primary" />
@@ -184,6 +292,15 @@ export default function AdminAuctions() {
                                   )}
                                   PDF
                                 </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  disabled={auction.status !== "valide" || !(auction.bids?.length)}
+                                  onClick={() => openWinnerSelectionDialog(auction)}
+                                >
+                                  <Download className="mr-1 h-4 w-4" />
+                                  Choisir gagnant
+                                </Button>
                               </div>
                             </TableCell>
                           </TableRow>
@@ -246,6 +363,69 @@ export default function AdminAuctions() {
                   </PaginationContent>
                 </Pagination>
               )}
+
+              <Dialog open={winnerDialogOpen} onOpenChange={(open) => {
+                if (!open) {
+                  setWinnerDialogOpen(false);
+                  setSelectedAuction(null);
+                  setSelectedBidId(null);
+                }
+              }}>
+                <DialogContent className="sm:max-w-2xl">
+                  <DialogHeader>
+                    <DialogTitle>Selection du gagnant</DialogTitle>
+                  </DialogHeader>
+
+                  <div className="space-y-4">
+                    <p className="text-sm text-muted-foreground">
+                      Choisissez une offre parmi les 3 meilleures pour generer le rapport PDF.
+                    </p>
+
+                    {selectedAuction ? (
+                      <div className="space-y-4">
+                        <div className="rounded-xl border border-border bg-card p-4">
+                          <p className="text-sm font-medium">Article</p>
+                          <p className="mt-1 text-base font-semibold">{selectedAuction.articles?.title || "-"}</p>
+                          <p className="text-sm text-muted-foreground">{selectedAuction.articles?.description || "Pas de description"}</p>
+                        </div>
+
+                        <RadioGroup value={selectedBidId ?? ""} onValueChange={(value) => setSelectedBidId(value)} className="space-y-3">
+                          {[...(selectedAuction.bids || [])]
+                            .sort((a: any, b: any) => b.amount - a.amount)
+                            .slice(0, 3)
+                            .map((bid: any, index: number) => (
+                              <label key={bid.id} className="flex items-center rounded-xl border p-3 transition-colors hover:border-primary">
+                                <RadioGroupItem value={bid.id} className="mr-3 h-4 w-4 rounded-full border border-border text-primary ring-offset-background focus-visible:ring-primary" />
+                                <div>
+                                  <p className="text-sm font-semibold">{bid.profiles?.name || bid.profiles?.email || `Offre ${index + 1}`}</p>
+                                  <p className="text-sm text-muted-foreground">{bid.amount.toLocaleString("fr-FR")} FCFA</p>
+                                  <p className="text-xs text-muted-foreground">Matricule : {bid.profiles?.matricule || "-"}</p>
+                                </div>
+                              </label>
+                            ))}
+                        </RadioGroup>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">Aucune enchere selectionnee.</p>
+                    )}
+                  </div>
+
+                  <DialogFooter className="mt-4">
+                    <Button variant="outline" onClick={() => setWinnerDialogOpen(false)}>
+                      Annuler
+                    </Button>
+                    <Button
+                      onClick={handleGenerateSelectedWinnerPdf}
+                      disabled={!selectedBidId || !selectedAuction}
+                    >
+                      {downloadingSelectedWinnerId === selectedAuction?.id ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : null}
+                      Generer PDF Top 3
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
             </>
           )}
         </CardContent>
