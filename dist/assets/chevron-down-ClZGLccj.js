@@ -1,0 +1,1 @@
+import{s as e}from"./tslib.es6-Cgo96Pn3.js";var t=e(`ChevronDown`,[[`path`,{d:`m6 9 6 6 6-6`,key:`qrunsl`}]]);export{t};

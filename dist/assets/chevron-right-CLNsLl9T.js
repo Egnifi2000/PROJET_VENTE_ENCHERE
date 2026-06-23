@@ -1,0 +1,1 @@
+import{s as e}from"./tslib.es6-Cgo96Pn3.js";var t=e(`ChevronRight`,[[`path`,{d:`m9 18 6-6-6-6`,key:`mthhwq`}]]);export{t};
